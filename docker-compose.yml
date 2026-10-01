@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: govconnect
+      POSTGRES_USER: govconnect
+      POSTGRES_PASSWORD: govconnect_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U govconnect -d govconnect"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      PORT: 3001
+      STORAGE_DRIVER: postgres
+      DATABASE_URL: postgres://govconnect:govconnect_dev@db:5432/govconnect
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      DATA_ENCRYPTION_KEY: 6fee380226213e086f7b3cf3da7d4f8f205d119350817e53288ed13b37da332d
+      JWT_ACCESS_SECRET: 28a326d790fd38d964ac82b5f55f185e912f3d7029a62674d8b4c52e0db8b4aac39f5c1667ad9cc98d2c3f24b5b84c5f
+      JWT_REFRESH_SECRET: a91c7e2f4b8d0e6a3c5f9b1d7e4a2c8f0b6d3e9a5c1f7b2d8e4a0c6f3b9d5e1a7c
+      OTP_DEV_RETURN_CODE: "false"
+      SMS_PROVIDER: ${SMS_PROVIDER:-auto}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

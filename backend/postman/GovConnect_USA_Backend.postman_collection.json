@@ -1,0 +1,439 @@
+{
+  "info": {
+    "_postman_id": "govconnect-usa-mvp-001",
+    "name": "GovConnect USA — Backend MVP",
+    "description": "Demo collection for Master's Project backend.\n\nSetup:\n1. Run: cd backend && npm run seed && npm run dev\n2. Import this file into Postman\n3. Run folder 01 → Auth → Login (saves accessToken & refreshToken)\n4. Continue with Wallet / Services / Verify\n\nDemo user: alex.citizen@example.com / DemoPass123!",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:3001" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "documentId", "value": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
+    { "key": "presentationCode", "value": "" },
+    { "key": "otpCode", "value": "" },
+    { "key": "requestId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "00 — Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health",
+            "description": "Liveness probe — no auth."
+          }
+        },
+        {
+          "name": "API index",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1",
+            "description": "Lists main route groups."
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 — Auth",
+      "item": [
+        {
+          "name": "OTP request (SMS)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data.devCode) pm.collectionVariables.set('otpCode', data.devCode);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+13125550142\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/otp/request",
+            "description": "Sends mock SMS. In development response includes devCode."
+          }
+        },
+        {
+          "name": "OTP verify",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data.accessToken) pm.collectionVariables.set('accessToken', data.accessToken);",
+                  "if (data.refreshToken) pm.collectionVariables.set('refreshToken', data.refreshToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+13125550142\",\n  \"code\": \"{{otpCode}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/otp/verify"
+          }
+        },
+        {
+          "name": "Register (optional)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"new.user@example.com\",\n  \"password\": \"DemoPass123!\",\n  \"firstName\": \"New\",\n  \"lastName\": \"User\",\n  \"state\": \"IL\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/register",
+            "description": "Creates IAL1 account. Password min 12 chars. Skip if using seeded demo user."
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data.accessToken) {",
+                  "  pm.collectionVariables.set('accessToken', data.accessToken);",
+                  "}",
+                  "if (data.refreshToken) {",
+                  "  pm.collectionVariables.set('refreshToken', data.refreshToken);",
+                  "}",
+                  "pm.test('Login returns tokens', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(data.accessToken).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"alex.citizen@example.com\",\n  \"password\": \"DemoPass123!\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "description": "Demo login. Tests tab auto-saves accessToken and refreshToken into collection variables."
+          }
+        },
+        {
+          "name": "Me (profile + IAL/AAL)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/auth/me",
+            "description": "Returns public profile and NIST assurance note (IAL1/AAL1)."
+          }
+        },
+        {
+          "name": "Refresh tokens",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data.accessToken) pm.collectionVariables.set('accessToken', data.accessToken);",
+                  "if (data.refreshToken) pm.collectionVariables.set('refreshToken', data.refreshToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/refresh",
+            "description": "Rotates refresh token (old one is revoked)."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/logout",
+            "description": "Revokes current refresh token. Run Login again afterward."
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 — Wallet",
+      "item": [
+        {
+          "name": "List wallet documents",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data.documents && data.documents[0]) {",
+                  "  pm.collectionVariables.set('documentId', data.documents[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/wallet",
+            "description": "Masked list of digital documents. Saves first documentId."
+          }
+        },
+        {
+          "name": "Get document detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/wallet/{{documentId}}",
+            "description": "Full document for owner (seeded mDL id works out of the box)."
+          }
+        },
+        {
+          "name": "Create QR presentation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data.presentationCode) {",
+                  "  pm.collectionVariables.set('presentationCode', data.presentationCode);",
+                  "}",
+                  "pm.test('Presentation created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentId\": \"{{documentId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/wallet/present",
+            "description": "Creates one-time presentation code (expires in ~2 minutes). Saves presentationCode for Verify."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 — Verify (QR)",
+      "item": [
+        {
+          "name": "Verify presentation (first use — OK)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/verify/{{presentationCode}}",
+            "description": "Public verifier endpoint. First call should return valid: true. No Bearer token."
+          }
+        },
+        {
+          "name": "Verify again (replay — should be 410)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/verify/{{presentationCode}}",
+            "description": "Security demo: same code again → PRESENTATION_USED (410)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 — Government services (mock)",
+      "item": [
+        {
+          "name": "Service catalog",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/services/catalog",
+            "description": "Lists 4 mock services. No auth required."
+          }
+        },
+        {
+          "name": "Submit — DMV license renewal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data.request && data.request.id) {",
+                  "  pm.collectionVariables.set('requestId', data.request.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceId\": \"dmv-license-renewal\",\n  \"payload\": {\n    \"eligible\": true,\n    \"ssn\": \"123-45-6789\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/services/requests",
+            "description": "Mock DMV renewal. Note: ssn in payload is stored as [REDACTED] (privacy)."
+          }
+        },
+        {
+          "name": "Submit — IRS refund status",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceId\": \"irs-refund-status\",\n  \"payload\": {\n    \"taxYear\": 2025\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/services/requests"
+          }
+        },
+        {
+          "name": "Submit — Unemployment application",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceId\": \"unemployment-application\",\n  \"payload\": {\n    \"priorWeeklyWage\": 900,\n    \"reason\": \"layoff\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/services/requests"
+          }
+        },
+        {
+          "name": "Submit — Vehicle registration renewal",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceId\": \"vehicle-reg-renewal\",\n  \"payload\": {\n    \"plateNumber\": \"IL-GC2026\",\n    \"requestedExpiration\": \"2027-03-15\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/services/requests"
+          }
+        },
+        {
+          "name": "List my service requests",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/services/requests"
+          }
+        },
+        {
+          "name": "Get one service request",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/services/requests/{{requestId}}",
+            "description": "Uses requestId saved from DMV submit (or paste an id from List)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 — Negative / security demos",
+      "item": [
+        {
+          "name": "Wallet without token → 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/wallet",
+            "description": "Shows auth enforcement."
+          }
+        },
+        {
+          "name": "Login with wrong password → 401",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"alex.citizen@example.com\",\n  \"password\": \"WrongPassword!!\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          }
+        },
+        {
+          "name": "Weak password on register → 400",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"weak@example.com\",\n  \"password\": \"short\",\n  \"firstName\": \"Weak\",\n  \"lastName\": \"Pass\",\n  \"state\": \"IL\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/register"
+          }
+        }
+      ]
+    }
+  ]
+}
