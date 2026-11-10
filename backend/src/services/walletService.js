@@ -8,6 +8,27 @@ const { DOCUMENT_PII_FIELDS } = require('../security/piiFields');
 const { audit } = require('../security/audit');
 const { isWalletDocumentType } = require('../security/documentTypes');
 
+/** Claims shared with a verifier via one-time QR (selective disclosure). */
+const DISCLOSED_PRESENTATION_FIELDS = [
+  'type',
+  'fullName',
+  'documentNumber',
+  'expiresAt',
+  'status',
+  'issuer',
+  'state',
+];
+
+/** Sensitive wallet fields never included in a presentation. */
+const WITHHELD_PRESENTATION_FIELDS = [
+  'dateOfBirth',
+  'address',
+  'vin',
+  'plateNumber',
+  'spouseName',
+  'claims',
+];
+
 function loadDoc(doc) {
   return decryptFields(doc, DOCUMENT_PII_FIELDS);
 }
@@ -104,6 +125,7 @@ async function createPresentation(userId, documentId, ctx = {}) {
 
   const code = crypto.randomBytes(24).toString('base64url');
   const expiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+  const disclosedFields = [...DISCLOSED_PRESENTATION_FIELDS];
 
   await upsert('qr_verifications', {
     id: code,
@@ -112,7 +134,7 @@ async function createPresentation(userId, documentId, ctx = {}) {
     createdAt: new Date().toISOString(),
     expiresAt,
     usedAt: null,
-    disclosedFields: ['type', 'fullName', 'documentNumber', 'expiresAt', 'status', 'issuer', 'state'],
+    disclosedFields,
   });
 
   audit({
@@ -122,11 +144,16 @@ async function createPresentation(userId, documentId, ctx = {}) {
     outcome: 'success',
     ip: ctx.ip,
     requestId: ctx.requestId,
+    meta: { disclosedFields },
   });
 
   return {
     presentationCode: code,
     expiresAt,
+    disclosedFields,
+    withheldFields: [...WITHHELD_PRESENTATION_FIELDS],
+    disclosureNote:
+      'Selective disclosure: only the listed claims are shared with the verifier. DOB, address, and other PII stay in the wallet.',
     qrPayload: {
       system: 'GovConnectUSA',
       v: 1,
@@ -202,6 +229,11 @@ async function verifyPresentation(code, ctx = {}) {
     valid: true,
     verifiedAt: presentation.usedAt,
     document: disclosed,
+    disclosure: {
+      shared: presentation.disclosedFields,
+      notShared: WITHHELD_PRESENTATION_FIELDS,
+      note: 'Selective disclosure — only shared claims were released for this one-time verification.',
+    },
   };
 }
 
@@ -238,4 +270,6 @@ module.exports = {
   verifyPresentation,
   createDocument,
   toWalletItem,
+  DISCLOSED_PRESENTATION_FIELDS,
+  WITHHELD_PRESENTATION_FIELDS,
 };

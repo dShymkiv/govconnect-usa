@@ -117,12 +117,16 @@ async function login({ email, password }, ctx = {}) {
   const ok = await verifyPassword(password, user.passwordHash);
   if (!ok) return fail();
 
+  // Session AAL reflects *this* authentication event (password-only = AAL1),
+  // not the highest AAL the account has ever achieved.
+  const sessionAal = 'AAL1';
+  const sessionIal = user.ial || 'IAL1';
   const jti = uuidv4();
   const accessToken = signAccessToken({
     sub: user.id,
     email: user.email,
-    aal: user.aal,
-    ial: user.ial,
+    aal: sessionAal,
+    ial: sessionIal,
   });
   const refreshToken = signRefreshToken({ sub: user.id, jti });
 
@@ -131,6 +135,8 @@ async function login({ email, password }, ctx = {}) {
     userId: user.id,
     createdAt: new Date().toISOString(),
     revoked: false,
+    aal: sessionAal,
+    ial: sessionIal,
   });
 
   audit({
@@ -139,15 +145,19 @@ async function login({ email, password }, ctx = {}) {
     outcome: 'success',
     ip: ctx.ip,
     requestId: ctx.requestId,
-    meta: { aal: user.aal, ial: user.ial },
+    meta: { aal: sessionAal, ial: sessionIal, factors: ['password'] },
   });
 
+  const publicUser = toPublicUser(loadUserDecrypted(user));
+  publicUser.aal = sessionAal;
+
   return {
-    user: toPublicUser(loadUserDecrypted(user)),
+    user: publicUser,
     accessToken,
     refreshToken,
     tokenType: 'Bearer',
     expiresIn: '15m',
+    assurance: { ial: sessionIal, aal: sessionAal, factors: ['password'] },
   };
 }
 
@@ -169,9 +179,9 @@ async function refresh(refreshToken, ctx = {}) {
   }
 
   const stored = await findById('refresh_tokens', decoded.jti);
-  if (!stored || stored.revoked || stored.userId !== decoded.sub) {
+  if (!stored || stored.userId !== decoded.sub) {
     audit({
-      action: 'AUTH_REFRESH_REVOKED',
+      action: 'AUTH_REFRESH_UNKNOWN',
       userId: decoded.sub,
       outcome: 'denied',
       ip: ctx.ip,
@@ -180,6 +190,27 @@ async function refresh(refreshToken, ctx = {}) {
     const err = new Error('Refresh token revoked');
     err.status = 401;
     err.code = 'REFRESH_REVOKED';
+    throw err;
+  }
+
+  // Reuse of an already-rotated refresh token → possible theft; revoke all sessions.
+  if (stored.revoked) {
+    const tokens = await findWhere('refresh_tokens', (t) => t.userId === decoded.sub && !t.revoked);
+    for (const t of tokens) {
+      t.revoked = true;
+      await upsert('refresh_tokens', t);
+    }
+    audit({
+      action: 'AUTH_REFRESH_REUSE',
+      userId: decoded.sub,
+      outcome: 'denied',
+      ip: ctx.ip,
+      requestId: ctx.requestId,
+      meta: { revokedSessions: tokens.length },
+    });
+    const err = new Error('Refresh token reuse detected — all sessions revoked');
+    err.status = 401;
+    err.code = 'REFRESH_REUSE';
     throw err;
   }
 
@@ -193,12 +224,16 @@ async function refresh(refreshToken, ctx = {}) {
   stored.revoked = true;
   await upsert('refresh_tokens', stored);
 
+  const sessionAal = stored.aal || 'AAL1';
+  const sessionIal = stored.ial || user.ial || 'IAL1';
   const jti = uuidv4();
   await upsert('refresh_tokens', {
     id: jti,
     userId: user.id,
     createdAt: new Date().toISOString(),
     revoked: false,
+    aal: sessionAal,
+    ial: sessionIal,
   });
 
   audit({
@@ -207,14 +242,15 @@ async function refresh(refreshToken, ctx = {}) {
     outcome: 'success',
     ip: ctx.ip,
     requestId: ctx.requestId,
+    meta: { aal: sessionAal, ial: sessionIal },
   });
 
   return {
     accessToken: signAccessToken({
       sub: user.id,
       email: user.email,
-      aal: user.aal,
-      ial: user.ial,
+      aal: sessionAal,
+      ial: sessionIal,
     }),
     refreshToken: signRefreshToken({ sub: user.id, jti }),
     tokenType: 'Bearer',

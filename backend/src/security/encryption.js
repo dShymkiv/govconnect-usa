@@ -1,11 +1,8 @@
 'use strict';
 
 /**
- * Field-level encryption for PII at rest (JSON dumps / future DB columns).
- * Algorithm: AES-256-GCM (authenticated encryption — confidentiality + integrity).
- *
- * Ciphertext format: enc:v1:<iv_b64>:<tag_b64>:<ciphertext_b64>
- * Aligns with proposal: encryption at rest + privacy-by-design (minimize plaintext PII).
+ * Field-level AES-256-GCM for PII at rest (JSON dumps and Postgres JSONB).
+ * Ciphertext: enc:v1:<iv_b64>:<tag_b64>:<ciphertext_b64>
  */
 
 const crypto = require('crypto');
@@ -45,7 +42,6 @@ function decrypt(payload) {
   if (!text.startsWith(PREFIX)) return text;
 
   const parts = text.split(':');
-  // enc : v1 : iv : tag : ciphertext
   if (parts.length !== 5) {
     throw new Error('Invalid encrypted payload format');
   }

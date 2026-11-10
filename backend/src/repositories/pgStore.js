@@ -78,8 +78,8 @@ async function removeById(name, id) {
 async function insertAuditEvent(entry) {
   await query(
     `INSERT INTO audit_events
-       (id, ts, action, user_id, resource, outcome, ip, request_id, meta)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
+       (id, ts, action, user_id, resource, outcome, ip, request_id, meta, integrity)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)`,
     [
       entry.id,
       entry.ts,
@@ -90,11 +90,14 @@ async function insertAuditEvent(entry) {
       entry.ip,
       entry.requestId,
       JSON.stringify(entry.meta || {}),
+      entry.integrity || null,
     ]
   );
 }
 
 module.exports = {
+  TABLE_MAP,
+  tableFor,
   readCollection,
   writeCollection,
   findById,

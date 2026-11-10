@@ -1,95 +1,74 @@
-# GovConnect USA — Backend (MVP)
+# GovConnect USA — Backend
 
-Node.js / Express prototype for a U.S. “Дія”-style digital identity wallet and mock e-government services.
+Node.js / Express API for a U.S. Diia-style digital identity wallet and mock e-government services.
 
-**Storage today:** JSON dump files in `data/` (PostgreSQL later).  
-**Focus this phase:** security foundations (encryption at rest, auth tokens, audit, rate limits).
+**Storage:** PostgreSQL (recommended, Docker) or JSON dumps (`STORAGE_DRIVER=json`).  
+**Auth (UI):** password + SMS OTP → **AAL2**. Email/password API login remains for tooling (**AAL1**).
 
 ## Quick start
 
 ```bash
+# from repo root
+docker compose up db -d
+
 cd backend
-cp .env.example .env   # if needed — a local .env may already exist
+cp .env.example .env   # set secrets + STORAGE_DRIVER=postgres + DATABASE_URL
 npm install
+npm run migrate
 npm run seed
 npm run dev
 ```
 
-API: `http://127.0.0.1:3001`
+API: `http://127.0.0.1:3001` — health: `GET /health`.
 
-### Demo user
+### Demo accounts
 
-- Email: `alex.citizen@example.com`
-- Password: `DemoPass123!`
+| Phone / email | Password | Notes |
+|---------------|----------|--------|
+| `+13129609078` (Diana) | `DemoPass123!` | Twilio Verify SMS |
+| `+13125550142` / `alex.citizen@example.com` | `DemoPass123!` | Mock OTP (`devCode`) when SMS is mock |
 
 ## Main endpoints
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| GET | `/health` | no | Liveness |
+| GET | `/health` | no | Liveness + storage driver |
 | POST | `/api/v1/auth/register` | no | Register (IAL1) |
-| POST | `/api/v1/auth/login` | no | Login → access + refresh JWT |
+| POST | `/api/v1/auth/login` | no | Email/password → AAL1 tokens |
+| POST | `/api/v1/auth/otp/request` | no | Phone + password → send SMS OTP |
+| POST | `/api/v1/auth/otp/verify` | no | Phone + password + code → AAL2 tokens |
 | POST | `/api/v1/auth/refresh` | no | Rotate tokens |
 | POST | `/api/v1/auth/logout` | no | Revoke refresh |
 | GET | `/api/v1/auth/me` | Bearer | Profile + IAL/AAL |
 | GET | `/api/v1/wallet` | Bearer | Document wallet (masked) |
 | GET | `/api/v1/wallet/:id` | Bearer | Full document (owner) |
-| POST | `/api/v1/wallet/present` | Bearer | Create QR presentation code |
-| GET | `/api/v1/verify/:code` | no* | Verifier consumes one-time code |
-| GET | `/api/v1/services/catalog` | no | Mock service catalog |
-| POST | `/api/v1/services/requests` | Bearer | Submit mock DMV/IRS/UI request |
-| GET | `/api/v1/services/requests` | Bearer | List own requests |
+| POST | `/api/v1/wallet/present` | Bearer | One-time presentation (verify link / optional QR) |
+| GET | `/api/v1/verify/:code` | no | Consume presentation; selective disclosure |
+| GET | `/api/v1/security/audit` | Bearer | Citizen audit evidence (HMAC preview) |
+| GET | `/api/v1/verify/:code` | no* | Verifier consumes code |
+| GET/POST | `/api/v1/services/...` | varies | Mock DMV / IRS / UI |
+| GET/POST | `/api/v1/document-requests/...` | Bearer | Request docs into wallet |
+| GET/POST | `/api/v1/vehicles/...` | Bearer | Vehicles + fines |
 
 \*Public but rate-limited.
 
-### Example: login → wallet
+Full reference: [`../docs/API_REFERENCE.md`](../docs/API_REFERENCE.md).
+
+## Tests & Postman
 
 ```bash
-curl -s http://127.0.0.1:3001/api/v1/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"alex.citizen@example.com","password":"DemoPass123!"}'
+npm test
 ```
 
-Use `accessToken` as `Authorization: Bearer <token>`.
+Import [`postman/GovConnect_USA_Backend.postman_collection.json`](postman/GovConnect_USA_Backend.postman_collection.json) — see [`postman/README.md`](postman/README.md).
 
-## Postman
+## Security
 
-Import [`postman/GovConnect_USA_Backend.postman_collection.json`](postman/GovConnect_USA_Backend.postman_collection.json) — see [`postman/README.md`](postman/README.md) for the demo order.
-
-## Project layout
-
-```
-backend/
-  data/                 # generated dumps (gitignored)
-  docs/SECURITY.md      # security decisions (read this)
-  scripts/seed-data.js
-  src/
-    config/
-    middleware/         # helmet/cors/rate-limit, auth
-    routes/
-    security/           # AES-GCM, bcrypt, JWT, audit
-    services/           # auth, wallet, mock gov adapters
-    repositories/       # JSON file store (DB adapter later)
-```
-
-## Security (summary)
-
-See **[docs/SECURITY.md](docs/SECURITY.md)** for NIST IAL/AAL mapping and controls.
+See **[docs/SECURITY.md](docs/SECURITY.md)** (NIST IAL/AAL, encryption, audit, injection defenses).
 
 Highlights:
 
-- AES-256-GCM field encryption for PII in dump files
-- bcrypt passwords; short-lived JWT + refresh rotation
-- Audit log: `data/audit-log.jsonl`
-- Helmet, CORS allowlist, rate limits, Zod validation
-
-## Next (later weeks)
-
-- PostgreSQL — commented stubs ready:
-  - `src/repositories/pgPool.js`
-  - `src/repositories/pgStore.js`
-  - `migrations/001_init.sql`
-- OIDC-style IdP / MFA (move toward AAL2)
-- Richer VC / mDL presentation
-- Separate frontend repo (React)
-- Docker Compose
+- AES-256-GCM field encryption for PII
+- bcrypt passwords; short-lived JWT + refresh rotation / reuse revoke
+- Audit: JSONL + Postgres `audit_events` with HMAC integrity
+- Helmet, CORS allowlist, rate limits, Zod validation, parameterized SQL

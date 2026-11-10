@@ -1,60 +1,59 @@
-# Security notes — GovConnect USA (MVP backend)
+# Security notes — GovConnect USA
 
-This document tracks security decisions for the academic prototype. It is intentionally concise for early weeks and will expand with the NIST threat model and CCPA privacy review.
+Security decisions for the master’s prototype, mapped to **NIST SP 800-63-3/B** and CCPA-style privacy-by-design. Mock/sandbox agency integrations only.
 
-## Goals (from project proposal)
+## Assurance levels
 
-- Encryption in transit and at rest
-- Audit logging
-- Identity assurance mapped to **NIST SP 800-63-3** (IAL / AAL)
-- Privacy-by-design aligned with CCPA-style principles
-- Mock/sandbox integrations only (no real agency systems)
+| Control | Value | How achieved |
+|--------|--------|----------------|
+| **IAL** | **IAL1** | Self-asserted registration / seeded profiles; no remote identity proofing |
+| **AAL (UI login)** | **AAL2** | Password (something you know) + SMS OTP via Twilio Verify (something you have) |
+| **AAL (email/password API)** | **AAL1** | Single-factor; kept for Postman demos — session AAL is bound to the *auth event* |
+| Session | Access JWT 15m + rotating refresh | Stolen bearer window reduced; refresh reuse revokes all sessions |
+| At-rest PII | AES-256-GCM field encryption | `DATA_ENCRYPTION_KEY` (32-byte hex); ciphertext `enc:v1:…` |
+| Passwords | bcrypt cost ≥ 12 | Never stored or logged in plaintext |
+| Transport | TLS in deployment | Local HTTP allowed only for development |
 
-## Current assurance levels
+Session AAL is stored on the refresh-token record and re-issued on refresh. Elevating an account via 2FA does **not** upgrade an existing password-only session.
 
-| Control | MVP value | Notes |
-|--------|-----------|--------|
-| IAL | **IAL1** | Self-asserted registration; no remote identity proofing yet |
-| AAL | **AAL1** | Single-factor password; MFA planned later for AAL2 |
-| Session | Short-lived JWT access (15m) + rotatable refresh | Reduces stolen-token window |
-| At-rest PII | AES-256-GCM field encryption in JSON dumps | Key via `DATA_ENCRYPTION_KEY` |
-| Passwords | bcrypt (cost 12+) | Never store plaintext |
-| Transport | TLS required in deployment | Local HTTP only for development |
+## Controls implemented
 
-Raising IAL/AAL is future work (document verification, IdP federation like Login.gov patterns, TOTP/WebAuthn).
+1. Helmet security headers; API CSP `default-src 'none'`
+2. CORS allowlist (`CORS_ORIGINS`)
+3. Global + stricter auth/verify rate limits
+4. Zod input validation on mutating routes
+5. JWT access/refresh separation; refresh rotation; **reuse detection** (revoke all sessions)
+6. Field-level AES-GCM encryption for user/document PII
+7. Append-only audit log (JSONL + `audit_events` in Postgres) with HMAC integrity digest
+8. Response hygiene — no stack traces; hashes never returned; SSN/bank keys redacted from service payloads
+9. Document presentations — ~2 min TTL, one-time consume (anti-replay); citizen consent before issue; selective disclosure metadata on verify
+10. Body size limit 32kb
+11. SMS OTP — Twilio Verify preferred; local challenges marked `2fa:`; attempt/TTL/cooldown limits
+12. Config guards — distinct JWT secrets, 64-hex DEK, no OTP leak in production
+13. Schema migrations ledger (`schema_migrations`) + CHECK/partial indexes on OTP/audit/tokens
+14. **SQL injection defense** — all user values bound as `$1…$n` parameters (`pg`); table names only from an allowlist (`TABLE_MAP` / `tableFor`); never string-concatenated SQL with request input
+15. **Input validation** — Zod schemas on bodies, query strings, and path params (UUID, E.164-like phone, numeric OTP, service/request enums, presentation-code charset)
 
-## Controls implemented now
+## Threat model (selected)
 
-1. **Helmet** security headers; API CSP `default-src 'none'`
-2. **CORS** allowlist (`CORS_ORIGINS`)
-3. **Rate limiting** — global + stricter auth + verify endpoints
-4. **Input validation** with Zod
-5. **JWT** access/refresh separation; refresh rotation + revocation list
-6. **Field-level encryption** for PII in dump files / JSONB payloads
-7. **Audit log** (`data/audit-log.jsonl` or `audit_events` table)
-8. **Response hygiene** — no stack traces; password hashes never returned; SSN/bank fields redacted from service payloads
-9. **Presentation QR codes** — 2-minute TTL, one-time use (anti-replay)
-10. **Body size limit** (32kb) to reduce oversized-payload DoS
-11. **SMS OTP** — HMAC-hashed codes, TTL, max attempts, resend cooldown. Provider: **Twilio** when `TWILIO_*` env vars are set (`SMS_PROVIDER=auto|twilio|mock`). Otherwise mock console gateway. Do not enable `OTP_DEV_RETURN_CODE=true` with real Twilio SMS.
+| Threat | Mitigation now | Residual / later |
+|--------|----------------|------------------|
+| Credential stuffing | Auth rate limit, bcrypt | CAPTCHA, IP reputation |
+| SMS OTP interception | Requires password first (2FA) | WebAuthn / TOTP step-up |
+| Token theft | Short TTL, rotation, reuse kill-switch | HttpOnly cookies, DPoP |
+| PII dump exposure | Field encryption | KMS/HSM, column-level ACLs |
+| QR replay | One-time + TTL | Reader authentication (18013-5) |
+| Audit tampering | HMAC integrity field | WORM storage / SIEM |
+| Refresh token replay | Reuse → revoke all user sessions | Device binding |
+| Excessive collection | Minimal fields, payload redaction | CCPA DSAR endpoints |
 
-## Explicit non-goals for this week
+## Explicit non-goals (this semester slice)
 
-- Full OAuth2/OIDC IdP (will evolve auth module toward OIDC)
-- W3C VC cryptographic suites / ISO 18013-5 full mdoc
-- PostgreSQL + disk encryption at volume level
-- Production key management (HSM / KMS)
-- Penetration test report (later semester week)
-
-## Threat highlights (starter list)
-
-| Threat | Mitigation now | Later |
-|--------|----------------|-------|
-| Credential stuffing | Auth rate limit, bcrypt | MFA, lockout policy |
-| Token theft | Short TTL, refresh rotation | Binding, HttpOnly cookies |
-| PII dump exposure | Field encryption | DB + KMS + backups policy |
-| QR replay | One-time + TTL | Device engagement, reader auth |
-| Excessive collection | Minimal fields, payload redaction | CCPA data inventory / DSAR APIs |
+- Full OAuth2/OIDC IdP / Login.gov federation
+- W3C VC crypto suites / full ISO 18013-5 mdoc
+- Production KMS/HSM
+- Formal penetration-test report (can be Week 11–12 activity)
 
 ## Demo credentials
 
-See README — demo passwords are for local prototype only; never reuse in real systems.
+Seeded accounts use a shared demo password for local/Twilio trial demos only. Never reuse outside the prototype.

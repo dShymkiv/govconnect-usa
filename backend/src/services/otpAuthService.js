@@ -292,6 +292,8 @@ async function verifyOtp({ phone, code, password }, ctx = {}) {
     userId: user.id,
     createdAt: new Date().toISOString(),
     revoked: false,
+    aal,
+    ial,
   });
 
   audit({

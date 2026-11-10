@@ -18,7 +18,6 @@ function createApp() {
   applySecurityMiddleware(app);
   app.use(requestId);
 
-  // Limit JSON body size to reduce DoS via large payloads
   app.use(express.json({ limit: '32kb' }));
 
   if (process.env.NODE_ENV !== 'test') {
@@ -44,6 +43,7 @@ function createApp() {
         documentRequests: '/api/v1/document-requests',
         vehicles: '/api/v1/vehicles',
         services: '/api/v1/services',
+        security: '/api/v1/security',
         verify: '/api/v1/verify/:code',
       },
     });
@@ -54,6 +54,7 @@ function createApp() {
   app.use('/api/v1/document-requests', require('./routes/documentRequests'));
   app.use('/api/v1/vehicles', require('./routes/vehicles'));
   app.use('/api/v1/services', servicesRoutes);
+  app.use('/api/v1/security', require('./routes/security'));
   app.use('/api/v1/verify', verifyRoutes);
 
   app.use((_req, res) => {

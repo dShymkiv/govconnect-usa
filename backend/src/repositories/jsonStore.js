@@ -1,19 +1,13 @@
 'use strict';
 
-/**
- * JSON-file repository (active storage for now).
- *
- * Future PostgreSQL swap (same API shape):
- *   - src/repositories/pgPool.js      — connection pool (commented)
- *   - src/repositories/pgStore.js     — query helpers (commented)
- *   - migrations/001_init.sql         — schema (commented)
- * Then point services at pgStore instead of this module.
- */
+/** JSON-file repository used when STORAGE_DRIVER=json (tests / offline demos). */
 
 const fs = require('fs');
 const path = require('path');
 
-const DATA_DIR = path.join(__dirname, '../../data');
+const DATA_DIR = process.env.GC_DATA_DIR
+  ? path.resolve(process.env.GC_DATA_DIR)
+  : path.join(__dirname, '../../data');
 
 function filePath(name) {
   return path.join(DATA_DIR, `${name}.json`);

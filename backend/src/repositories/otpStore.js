@@ -10,7 +10,10 @@ function usePostgres() {
 }
 
 function jsonPath() {
-  return path.join(__dirname, '../../data/sms_otps.json');
+  const dir = process.env.GC_DATA_DIR
+    ? path.resolve(process.env.GC_DATA_DIR)
+    : path.join(__dirname, '../../data');
+  return path.join(dir, 'sms_otps.json');
 }
 
 function readJson() {

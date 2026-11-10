@@ -1,21 +1,35 @@
 'use strict';
 
 const express = require('express');
-const { z } = require('zod');
 const { requireAuth } = require('../middleware/auth');
 const govServices = require('../services/govServices');
+const {
+  z,
+  uuid,
+  serviceCategory,
+  serviceId,
+  safePayload,
+  parseOrThrow,
+  zodToHttpError,
+} = require('../security/validation');
 
 const router = express.Router();
 
-router.get('/catalog', (_req, res) => {
-  res.json({ services: govServices.listCatalog() });
+router.get('/catalog', (req, res, next) => {
+  try {
+    const category = parseOrThrow(serviceCategory, req.query.category || undefined);
+    res.json({ services: govServices.listCatalog(category) });
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.use(requireAuth);
 
 router.get('/requests', async (req, res, next) => {
   try {
-    res.json({ requests: await govServices.listRequests(req.user.id) });
+    const category = parseOrThrow(serviceCategory, req.query.category || undefined);
+    res.json({ requests: await govServices.listRequests(req.user.id, category) });
   } catch (err) {
     next(err);
   }
@@ -23,32 +37,28 @@ router.get('/requests', async (req, res, next) => {
 
 router.get('/requests/:requestId', async (req, res, next) => {
   try {
-    res.json({ request: await govServices.getRequest(req.user.id, req.params.requestId) });
+    const requestId = parseOrThrow(uuid, req.params.requestId);
+    res.json({ request: await govServices.getRequest(req.user.id, requestId) });
   } catch (err) {
     next(err);
   }
 });
 
 const submitSchema = z.object({
-  serviceId: z.string().min(1),
-  payload: z.record(z.unknown()).optional().default({}),
+  serviceId,
+  payload: safePayload,
 });
 
 router.post('/requests', async (req, res, next) => {
   try {
-    const data = submitSchema.parse(req.body);
+    const data = parseOrThrow(submitSchema, req.body);
     const request = await govServices.submitRequest(req.user.id, data, {
       ip: req.ip,
       requestId: req.requestId,
     });
     res.status(201).json({ request });
   } catch (err) {
-    if (err.name === 'ZodError') {
-      err.status = 400;
-      err.code = 'VALIDATION_ERROR';
-      err.message = err.issues.map((e) => e.message).join('; ');
-    }
-    next(err);
+    next(zodToHttpError(err));
   }
 });
 

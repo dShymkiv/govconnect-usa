@@ -1,9 +1,6 @@
 'use strict';
 
-/**
- * Storage facade — JSON dumps (default/local) or PostgreSQL (Docker).
- * All methods are async so callers stay driver-agnostic.
- */
+/** Storage facade — JSON dumps or PostgreSQL; async API is driver-agnostic. */
 
 const { config } = require('../config');
 const json = require('./jsonStore');

@@ -1,6 +1,6 @@
 'use strict';
 
-/** Fields treated as PII — encrypted at rest in dump files. */
+/** Fields treated as PII — encrypted at rest. */
 const USER_PII_FIELDS = ['ssnLast4', 'phone', 'dateOfBirth', 'streetAddress'];
 const DOCUMENT_PII_FIELDS = [
   'documentNumber',

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "govconnect-usa-mvp-001",
     "name": "GovConnect USA — Backend MVP",
-    "description": "Demo collection for Master's Project backend.\n\nSetup:\n1. Run: cd backend && npm run seed && npm run dev\n2. Import this file into Postman\n3. Run folder 01 → Auth → Login (saves accessToken & refreshToken)\n4. Continue with Wallet / Services / Verify\n\nDemo user: alex.citizen@example.com / DemoPass123!",
+    "description": "Demo collection for Master's Project backend.\n\nSetup:\n1. docker compose up db -d; cd backend && npm run migrate && npm run seed && npm run dev\n2. Import this file into Postman\n3. Prefer OTP request → OTP verify (AAL2), or Login for AAL1 tooling\n4. Continue with Wallet / Services / Verify\n\nDemo: +13125550142 / DemoPass123! (mock OTP) or alex.citizen@example.com / DemoPass123!",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -60,10 +60,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"phone\": \"+13125550142\"\n}"
+              "raw": "{\n  \"phone\": \"+13125550142\",\n  \"password\": \"DemoPass123!\"\n}"
             },
             "url": "{{baseUrl}}/api/v1/auth/otp/request",
-            "description": "Sends mock SMS. In development response includes devCode."
+            "description": "Password + phone → SMS OTP. Mock SMS returns devCode in JSON."
           }
         },
         {
@@ -86,9 +86,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"phone\": \"+13125550142\",\n  \"code\": \"{{otpCode}}\"\n}"
+              "raw": "{\n  \"phone\": \"+13125550142\",\n  \"password\": \"DemoPass123!\",\n  \"code\": \"{{otpCode}}\"\n}"
             },
-            "url": "{{baseUrl}}/api/v1/auth/otp/verify"
+            "url": "{{baseUrl}}/api/v1/auth/otp/verify",
+            "description": "Completes 2FA → AAL2 tokens. Use SMS code or mock {{otpCode}}."
           }
         },
         {
@@ -135,7 +136,7 @@
               "raw": "{\n  \"email\": \"alex.citizen@example.com\",\n  \"password\": \"DemoPass123!\"\n}"
             },
             "url": "{{baseUrl}}/api/v1/auth/login",
-            "description": "Demo login. Tests tab auto-saves accessToken and refreshToken into collection variables."
+            "description": "Email/password only → AAL1. Prefer OTP verify for UI-equivalent AAL2 demos."
           }
         },
         {
@@ -146,7 +147,7 @@
               { "key": "Authorization", "value": "Bearer {{accessToken}}" }
             ],
             "url": "{{baseUrl}}/api/v1/auth/me",
-            "description": "Returns public profile and NIST assurance note (IAL1/AAL1)."
+            "description": "Public profile + session assurance (IAL1 / AAL1 or AAL2 from auth event)."
           }
         },
         {

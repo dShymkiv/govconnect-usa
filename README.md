@@ -1,69 +1,69 @@
 # GovConnect USA
 
-Prototype inspired by Ukraine’s **Diia**: secure digital identity, document wallet, mock e-government services.
+Master’s Project prototype: a U.S. *Diia*-inspired **digital identity wallet** and mock e-government services, with a security-first Node/Express backend and React UI.
+
+## Documentation (start here)
+
+| Document | Description |
+|----------|-------------|
+| **[docs/README.md](docs/README.md)** | Full documentation index |
+| [docs/DEFENSE_DOCUMENTATION.md](docs/DEFENSE_DOCUMENTATION.md) | Defense pack entry + demo script |
+| [docs/presentation/GovConnect_USA_Defense.pptx](docs/presentation/GovConnect_USA_Defense.pptx) | Defense PowerPoint |
+| [docs/presentation/GovConnect_USA_Defense.pdf](docs/presentation/GovConnect_USA_Defense.pdf) | Defense PDF |
+| [docs/presentation/index.html](docs/presentation/index.html) | Defense slides (browser) |
+| [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) | Problem, scope, goals |
+| [docs/REQUIREMENTS_TRACEABILITY.md](docs/REQUIREMENTS_TRACEABILITY.md) | Requirements ↔ evidence matrix |
+| [docs/COMPARATIVE_ANALYSIS.md](docs/COMPARATIVE_ANALYSIS.md) | Diia vs U.S. rationale |
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Citizen demo walkthrough |
+| [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | Setup, env, migrations, tests |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | REST API |
+| [backend/docs/SECURITY.md](backend/docs/SECURITY.md) | NIST IAL/AAL & controls |
+| [backend/docs/TEST_CASES.md](backend/docs/TEST_CASES.md) | Test case catalog |
 
 ## What’s included
 
 | Piece | Path |
 |-------|------|
 | Backend API | `backend/` |
-| React UI (auth OTP + wallet) | `frontend/` |
-| Docker Compose (Postgres + API + UI) | `docker-compose.yml` |
+| React UI (2FA login + wallet + verify) | `frontend/` |
+| Docker Compose (Postgres + optional stack) | `docker-compose.yml` |
 
-## Quick start (Docker — recommended)
+## Quick start
+
+### Postgres + local API/UI
+
+```bash
+docker compose up db -d
+cd backend && npm install && npm run migrate && npm run seed && npm run dev
+# other terminal
+cd frontend && npm install && npm run dev
+```
+
+- UI: http://localhost:5173  
+- API health: http://127.0.0.1:3001/health  
+
+### Full Compose
 
 ```bash
 docker compose up --build
 ```
 
-- Frontend: http://localhost:5173  
-- API: http://localhost:3001/health  
-- Postgres: `localhost:5432` (`govconnect` / `govconnect_dev`)
+## Auth (UI)
 
-**SMS login demo:** phone `+13125550142` — the UI shows a **dev mock code** (also printed in backend logs).
+1. Phone + password  
+2. SMS one-time code (Twilio Verify)  
+3. Session mapped to **AAL2** for this prototype  
 
-## Local without Docker
+Seeded demo: `+13129609078` / `DemoPass123!` (Twilio trial: verify the phone in Console).
 
-### Backend (JSON storage)
+**Present / verify:** optional for using services; for demos use **Open verify page** after creating a presentation (phone QR needs same Wi‑Fi / LAN).
 
-```bash
-cd backend
-cp .env.example .env   # or use existing .env
-npm install
-npm run seed
-npm run dev
-```
-
-### Backend + Postgres only
+## Tests
 
 ```bash
-docker compose up db -d
-cd backend
-# set in .env:
-# STORAGE_DRIVER=postgres
-# DATABASE_URL=postgres://govconnect:govconnect_dev@127.0.0.1:5432/govconnect
-npm run migrate
-npm run seed
-npm run dev
+cd backend && npm test   # 37 cases
 ```
 
-### Frontend
+## License
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Open http://localhost:5173
-
-## Auth flows
-
-1. **SMS OTP** (primary UI): `POST /api/v1/auth/otp/request` → `POST /api/v1/auth/otp/verify`
-2. **Email/password** (Postman): still available for demos
-
-OTP codes are **HMAC-hashed at rest**, TTL-limited, attempt-limited; SMS uses a **mock gateway** (console log). Swap `smsGateway.js` for Twilio later.
-
-## Security notes
-
-See `backend/docs/SECURITY.md`.
+UNLICENSED — academic prototype for Northeastern Illinois University CS master’s project use.

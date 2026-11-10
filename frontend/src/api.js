@@ -1,4 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
+import { getApiBaseUrl } from './publicUrl'
+
+const API_URL = getApiBaseUrl()
 
 export const AUTH_EXPIRED_EVENT = 'gc:auth-expired';
 
@@ -63,6 +65,8 @@ export const api = {
   documentRequests: (token) => request('/api/v1/document-requests', { token }),
   submitDocumentRequest: (token, body) =>
     request('/api/v1/document-requests', { method: 'POST', body, token }),
+  confirmMarriage: (payload) =>
+    request('/api/v1/document-requests/marriage/confirm', { method: 'POST', body: payload }),
   vehicles: (token) => request('/api/v1/vehicles', { token }),
   vehicleFines: (token, params = {}) => {
     const q = new URLSearchParams(params).toString();
@@ -70,6 +74,19 @@ export const api = {
   },
   payFine: (token, fineId) =>
     request(`/api/v1/vehicles/fines/${fineId}/pay`, { method: 'POST', token }),
+  servicesCatalog: (token, category) => {
+    const q = category ? `?category=${encodeURIComponent(category)}` : '';
+    return request(`/api/v1/services/catalog${q}`, { token });
+  },
+  serviceRequests: (token, category) => {
+    const q = category ? `?category=${encodeURIComponent(category)}` : '';
+    return request(`/api/v1/services/requests${q}`, { token });
+  },
+  submitService: (token, body) =>
+    request('/api/v1/services/requests', { method: 'POST', body, token }),
+  securityAudit: (token, limit = 20) =>
+    request(`/api/v1/security/audit?limit=${encodeURIComponent(limit)}`, { token }),
+  verifyPresentation: (code) => request(`/api/v1/verify/${encodeURIComponent(code)}`),
 };
 
 export { API_URL };

@@ -3,6 +3,7 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const walletService = require('../services/walletService');
+const { presentationCode, parseOrThrow } = require('../security/validation');
 
 const router = express.Router();
 
@@ -16,7 +17,8 @@ const verifyLimiter = rateLimit({
 
 router.get('/:code', verifyLimiter, async (req, res, next) => {
   try {
-    const result = await walletService.verifyPresentation(req.params.code, {
+    const code = parseOrThrow(presentationCode, req.params.code);
+    const result = await walletService.verifyPresentation(code, {
       ip: req.ip,
       requestId: req.requestId,
     });

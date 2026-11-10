@@ -1,13 +1,42 @@
 'use strict';
 
 const express = require('express');
-const { z } = require('zod');
 const { requireAuth } = require('../middleware/auth');
+const { authRateLimiter } = require('../middleware/security');
 const documentRequestService = require('../services/documentRequestService');
 const authService = require('../services/authService');
 const { findById } = require('../repositories/store');
+const {
+  z,
+  uuid,
+  requestTypeId,
+  phoneE164Like,
+  otpCode,
+  safePayload,
+  parseOrThrow,
+  zodToHttpError,
+} = require('../security/validation');
 
 const router = express.Router();
+
+const marriageConfirmSchema = z.object({
+  phone: phoneE164Like,
+  code: otpCode,
+});
+
+/** Public: partner confirms marriage invite with phone + SMS code (no user directory). */
+router.post('/marriage/confirm', authRateLimiter, async (req, res, next) => {
+  try {
+    const data = parseOrThrow(marriageConfirmSchema, req.body);
+    const result = await documentRequestService.confirmMarriageLicense(data, {
+      ip: req.ip,
+      requestId: req.requestId,
+    });
+    res.json(result);
+  } catch (err) {
+    next(zodToHttpError(err));
+  }
+});
 
 router.use(requireAuth);
 
@@ -38,20 +67,21 @@ router.get('/', async (req, res, next) => {
 
 router.get('/:requestId', async (req, res, next) => {
   try {
-    res.json({ request: await documentRequestService.getRequest(req.user.id, req.params.requestId) });
+    const requestId = parseOrThrow(uuid, req.params.requestId);
+    res.json({ request: await documentRequestService.getRequest(req.user.id, requestId) });
   } catch (err) {
     next(err);
   }
 });
 
 const submitSchema = z.object({
-  requestTypeId: z.string().min(1),
-  payload: z.record(z.unknown()).optional().default({}),
+  requestTypeId,
+  payload: safePayload,
 });
 
 router.post('/', async (req, res, next) => {
   try {
-    const data = submitSchema.parse(req.body);
+    const data = parseOrThrow(submitSchema, req.body);
     const user = await authService.getProfile(req.user.id);
     const stored = await findById('users', req.user.id);
     const profile = {
@@ -64,12 +94,7 @@ router.post('/', async (req, res, next) => {
     });
     res.status(201).json({ request });
   } catch (err) {
-    if (err.name === 'ZodError') {
-      err.status = 400;
-      err.code = 'VALIDATION_ERROR';
-      err.message = err.issues.map((e) => e.message).join('; ');
-    }
-    next(err);
+    next(zodToHttpError(err));
   }
 });
 

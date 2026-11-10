@@ -173,9 +173,104 @@ async function sendSms(opts) {
   return sendOtp(opts);
 }
 
+/**
+ * Transactional / confirmation SMS (not OTP).
+ * Uses Messages API when available; otherwise mock/log so callers can stay best-effort.
+ */
+async function sendNotificationSms({ to, body, meta = {} }) {
+  const text = String(body || '').trim();
+  if (!to || !text) {
+    const err = new Error('Notification SMS requires to and body');
+    err.status = 400;
+    err.code = 'VALIDATION_ERROR';
+    throw err;
+  }
+
+  const pref = (config.sms.provider || 'auto').toLowerCase();
+  const ready = twilioCredentialsReady();
+  const hasFrom = Boolean(config.sms.twilioFromNumber);
+  const forceMock = pref === 'mock' || !ready;
+
+  const canUseMessages =
+    !forceMock &&
+    hasFrom &&
+    (pref === 'twilio-messages' ||
+      pref === 'twilio' ||
+      pref === 'auto' ||
+      pref === 'twilio-verify');
+
+  // Prefer Messages API for confirmations (works for verified trial numbers too).
+  // If Twilio rejects the send, fall back to console delivery so booking still completes.
+  if (canUseMessages) {
+    try {
+      const message = await getTwilioClient().messages.create({
+        to,
+        from: config.sms.twilioFromNumber,
+        body: text,
+      });
+      audit({
+        action: 'SMS_NOTIFICATION_SENT',
+        outcome: 'success',
+        meta: {
+          toLast4: String(to).slice(-4),
+          provider: 'twilio-messages',
+          sid: message.sid,
+          ...meta,
+        },
+      });
+      return {
+        provider: 'twilio-messages',
+        accepted: true,
+        sid: message.sid,
+        kind: 'notification',
+      };
+    } catch (err) {
+      audit({
+        action: 'SMS_NOTIFICATION_SENT',
+        outcome: 'failure',
+        meta: {
+          toLast4: String(to).slice(-4),
+          provider: 'twilio-messages',
+          error: err.message,
+          ...meta,
+        },
+      });
+      // eslint-disable-next-line no-console
+      console.log(
+        `[notification-sms:fallback] to=${to} body="${text}" err=${err.message}`,
+      );
+      return {
+        provider: 'mock-fallback',
+        accepted: true,
+        kind: 'notification',
+        degraded: true,
+        error: err.message,
+      };
+    }
+  }
+
+  // eslint-disable-next-line no-console
+  console.log(`[notification-sms] to=${to} body="${text}"`);
+  audit({
+    action: 'SMS_NOTIFICATION_SENT',
+    outcome: 'success',
+    meta: {
+      toLast4: String(to).slice(-4),
+      provider: 'mock',
+      ...meta,
+    },
+  });
+  return {
+    provider: 'mock',
+    accepted: true,
+    kind: 'notification',
+  };
+}
+
 module.exports = {
   sendOtp,
   sendSms,
+  sendNotificationSms,
   checkTwilioVerify,
   isTwilioActive,
   resolveProvider,
