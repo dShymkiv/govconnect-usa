@@ -1035,6 +1035,10 @@ async function submitRequest(userId, { serviceId, payload }, ctx = {}) {
     const sms = await notifyAppointmentBySms(userId, service, record, ctx);
     record.result = { ...record.result, smsConfirmation: sms };
     record.updatedAt = new Date().toISOString();
+  } else if (shouldSendPaymentSms(service, result)) {
+    const sms = await notifyPaymentBySms(userId, service, record, ctx);
+    record.result = { ...record.result, smsConfirmation: sms };
+    record.updatedAt = new Date().toISOString();
   }
 
   await upsert('agency_applications', record);
@@ -1059,6 +1063,19 @@ async function submitRequest(userId, { serviceId, payload }, ctx = {}) {
 
 function shouldSendAppointmentSms(service, result) {
   if (service?.flow !== 'appointment') return false;
+  const status = String(result?.status || '');
+  return status === 'accepted' || status === 'submitted';
+}
+
+const PAYMENT_SMS_SERVICE_IDS = new Set([
+  'irs-make-payment',
+  'irs-payment-plan',
+  'irs-estimated-tax',
+  'unemployment-payment-method',
+]);
+
+function shouldSendPaymentSms(service, result) {
+  if (!PAYMENT_SMS_SERVICE_IDS.has(service?.id)) return false;
   const status = String(result?.status || '');
   return status === 'accepted' || status === 'submitted';
 }
@@ -1104,10 +1121,11 @@ async function notifyAppointmentBySms(userId, service, record, ctx = {}) {
       },
     });
     return {
-      sent: true,
+      sent: Boolean(delivery.accepted) && !delivery.degraded,
       provider: delivery.provider,
       degraded: Boolean(delivery.degraded),
       phoneLast4: phone.slice(-4),
+      reason: delivery.degraded ? delivery.error || 'degraded_delivery' : undefined,
     };
   } catch (err) {
     audit({
@@ -1120,6 +1138,59 @@ async function notifyAppointmentBySms(userId, service, record, ctx = {}) {
       meta: { serviceId: service.id, error: err.message },
     });
     // Booking already succeeded — SMS is best-effort
+    return { sent: false, reason: err.code || 'SMS_SEND_FAILED', message: err.message };
+  }
+}
+
+function buildPaymentSmsBody(service, record) {
+  const r = record.result || {};
+  const conf = r.confirmationNumber || record.id.slice(0, 8).toUpperCase();
+  if (service.id === 'irs-payment-plan') {
+    const monthly = Number(r.monthlyPayment || 0).toFixed(2);
+    return `GovConnect: IRS installment plan confirmed (${conf}). About $${monthly}/mo. First due ${r.firstPaymentDue || 'soon'}.`;
+  }
+  if (service.id === 'unemployment-payment-method') {
+    return `GovConnect: Unemployment payment method updated (${conf}). ${r.paymentMethod || 'Method on file'}.`;
+  }
+  const amount = Number(r.paymentAmount || 0).toFixed(2);
+  return `GovConnect: Payment confirmed. $${amount}. Ref ${conf}. ${service.name}.`;
+}
+
+async function notifyPaymentBySms(userId, service, record, ctx = {}) {
+  const phone = await loadUserPhone(userId);
+  if (!phone) {
+    return { sent: false, reason: 'no_phone_on_file' };
+  }
+
+  try {
+    const delivery = await sendNotificationSms({
+      to: phone,
+      body: buildPaymentSmsBody(service, record),
+      meta: {
+        kind: 'payment_confirmation',
+        serviceId: service.id,
+        requestId: record.id,
+        userId,
+        ip: ctx.ip,
+      },
+    });
+    return {
+      sent: Boolean(delivery.accepted) && !delivery.degraded,
+      provider: delivery.provider,
+      degraded: Boolean(delivery.degraded),
+      phoneLast4: phone.slice(-4),
+      reason: delivery.degraded ? delivery.error || 'degraded_delivery' : undefined,
+    };
+  } catch (err) {
+    audit({
+      action: 'PAYMENT_SMS_FAILED',
+      outcome: 'failure',
+      userId,
+      resource: record.id,
+      ip: ctx.ip,
+      requestId: ctx.requestId,
+      meta: { serviceId: service.id, error: err.message },
+    });
     return { sent: false, reason: err.code || 'SMS_SEND_FAILED', message: err.message };
   }
 }

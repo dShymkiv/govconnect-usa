@@ -1040,20 +1040,28 @@ a {
   position: fixed;
   inset: 0;
   background: rgba(10, 10, 10, 0.45);
-  display: grid;
-  place-items: center;
-  padding: 1rem;
+  display: flex;
+  justify-content: center;
+  align-items: safe center;
+  padding: 1.25rem 1rem;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   z-index: 50;
   animation: fadeIn 0.2s ease;
 }
 
 .modal {
   width: min(440px, 100%);
+  max-height: calc(100dvh - 2.5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: #fff;
   border-radius: 20px;
   padding: 1.5rem;
   box-shadow: var(--shadow);
   animation: riseIn 0.25s ease;
+  margin: auto;
+  flex-shrink: 0;
 }
 
 .modal h3 {

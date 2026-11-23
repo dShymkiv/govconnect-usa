@@ -105,14 +105,6 @@ function renderServiceDetailRows(detail) {
     ['Office location', r.officeLocation],
     ['Appointment', r.appointmentWindow],
     ['Bring to appointment', r.documentsNeeded],
-    [
-      'SMS confirmation',
-      r.smsConfirmation?.sent
-        ? `Sent to ••••${r.smsConfirmation.phoneLast4 || ''}`
-        : r.smsConfirmation
-          ? `Not sent (${r.smsConfirmation.reason || 'unavailable'})`
-          : null,
-    ],
     ['Transcript type', r.transcriptType],
     ['Balance due', r.balanceDue != null ? money(r.balanceDue) : null],
     ['Monthly payment', r.monthlyPayment != null ? money(r.monthlyPayment) : null],

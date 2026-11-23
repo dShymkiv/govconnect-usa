@@ -7,8 +7,9 @@
 const { uuidv4 } = require('../utils/ids');
 const { findWhere, findById, upsert } = require('../repositories/store');
 const { decryptFields } = require('../security/encryption');
-const { DOCUMENT_PII_FIELDS } = require('../security/piiFields');
+const { DOCUMENT_PII_FIELDS, USER_PII_FIELDS } = require('../security/piiFields');
 const { audit } = require('../security/audit');
+const { sendNotificationSms } = require('./smsGateway');
 
 async function listVehicles(userId) {
   const docs = await findWhere(
@@ -63,6 +64,10 @@ async function payFine(userId, fineId, ctx = {}) {
   fine.paidAt = new Date().toISOString();
   fine.paymentConfirmation = `PAY-${uuidv4().slice(0, 8).toUpperCase()}`;
   fine.updatedAt = new Date().toISOString();
+
+  const sms = await notifyFinePaymentBySms(userId, fine, ctx);
+  fine.smsConfirmation = sms;
+  fine.updatedAt = new Date().toISOString();
   await upsert('vehicle_fines', fine);
 
   audit({
@@ -72,10 +77,63 @@ async function payFine(userId, fineId, ctx = {}) {
     outcome: 'success',
     ip: ctx.ip,
     requestId: ctx.requestId,
-    meta: { amount: fine.amount, plateNumber: fine.plateNumber },
+    meta: {
+      amount: fine.amount,
+      plateNumber: fine.plateNumber,
+      smsSent: Boolean(sms?.sent),
+    },
   });
 
   return fine;
+}
+
+async function loadUserPhone(userId) {
+  const raw = await findById('users', userId);
+  if (!raw) return null;
+  const user = decryptFields(raw, USER_PII_FIELDS);
+  const phone = user.phoneE164 || user.phone || null;
+  return phone ? String(phone) : null;
+}
+
+async function notifyFinePaymentBySms(userId, fine, ctx = {}) {
+  const phone = await loadUserPhone(userId);
+  if (!phone) return { sent: false, reason: 'no_phone_on_file' };
+
+  const amount = Number(fine.amount || 0).toFixed(2);
+  const conf = fine.paymentConfirmation || fine.id.slice(0, 8).toUpperCase();
+  const plate = fine.plateNumber || 'vehicle';
+  const body = `GovConnect: Fine payment confirmed. $${amount} for plate ${plate}. Ref ${conf}.`;
+
+  try {
+    const delivery = await sendNotificationSms({
+      to: phone,
+      body,
+      meta: {
+        kind: 'fine_payment_confirmation',
+        fineId: fine.id,
+        userId,
+        ip: ctx.ip,
+      },
+    });
+    return {
+      sent: Boolean(delivery.accepted) && !delivery.degraded,
+      provider: delivery.provider,
+      degraded: Boolean(delivery.degraded),
+      phoneLast4: phone.slice(-4),
+      reason: delivery.degraded ? delivery.error || 'degraded_delivery' : undefined,
+    };
+  } catch (err) {
+    audit({
+      action: 'FINE_PAYMENT_SMS_FAILED',
+      outcome: 'failure',
+      userId,
+      resource: fine.id,
+      ip: ctx.ip,
+      requestId: ctx.requestId,
+      meta: { error: err.message },
+    });
+    return { sent: false, reason: err.code || 'SMS_SEND_FAILED', message: err.message };
+  }
 }
 
 module.exports = {
