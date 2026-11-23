@@ -14,12 +14,17 @@ export default function LoginPage() {
   const [masked, setMasked] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [smsConsent, setSmsConsent] = useState(false)
 
   if (token) return <Navigate to="/wallet" replace />
 
   async function sendCode(e) {
     e.preventDefault()
     setError('')
+    if (!smsConsent) {
+      setError('Please agree to receive SMS verification messages to continue.')
+      return
+    }
     setLoading(true)
     try {
       const res = await api.requestOtp(phone, password)
@@ -99,7 +104,20 @@ export default function LoginPage() {
                   minLength={8}
                 />
               </div>
-              <button className="btn btn-primary" type="submit" disabled={loading}>
+              <label className="consent-check" htmlFor="sms-consent">
+                <input
+                  id="sms-consent"
+                  type="checkbox"
+                  checked={smsConsent}
+                  onChange={(e) => setSmsConsent(e.target.checked)}
+                  required
+                />
+                <span>
+                  I agree to receive SMS messages from GovConnect USA for verification codes and
+                  service notices. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help.
+                </span>
+              </label>
+              <button className="btn btn-primary" type="submit" disabled={loading || !smsConsent}>
                 {loading ? 'Checking…' : 'Continue'}
               </button>
             </form>
